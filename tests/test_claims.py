@@ -2,8 +2,8 @@ from app.claims import extract_claims
 
 
 answer = """
-Satya Nadella is the Chairman and CEO of Microsoft.
-He joined Microsoft in 1992 and became CEO in 2014.
+Satya Nadella succeeded Steve Ballmer as CEO of Microsoft
+in 2014 and became Chairman in 2021.
 """
 
 claims = extract_claims(answer)

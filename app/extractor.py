@@ -35,6 +35,5 @@ def extract_text(url: str) -> str:
 
         return soup.get_text(separator=" ", strip=True)
 
-    except requests.RequestException as error:
-        print(f"Could not extract {url}: {error}")
+    except requests.RequestException:
         return ""

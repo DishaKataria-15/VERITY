@@ -2,13 +2,11 @@ from app.search import search_web
 from app.extractor import extract_text
 from app.llm import generate_answer
 from app.claims import extract_claims
-from app.verification import match_evidence, verify_claim
+from app.verification import verify_claim
+from app.conflict import analyze_verdicts
 
 
 def run_verity(question: str):
-    print(f"\nQuestion: {question}")
-    print("\nSearching the web...\n")
-
     # --------------------------------------------------
     # 1. Search the web
     # --------------------------------------------------
@@ -30,7 +28,7 @@ def run_verity(question: str):
         sources.append(source)
 
     # --------------------------------------------------
-    # 2. Prepare evidence for answer generation
+    # 2. Prepare evidence
     # --------------------------------------------------
 
     evidence_parts = []
@@ -59,91 +57,92 @@ Evidence:
     # 3. Generate answer
     # --------------------------------------------------
 
-    print("Generating answer with Qwen3...\n")
-
-    answer = generate_answer(question, evidence)
-
-    print("=" * 60)
-    print("VERITY ANSWER")
-    print("=" * 60)
-    print(answer)
+    answer = generate_answer(
+        question,
+        evidence
+    )
 
     # --------------------------------------------------
-    # 4. Extract factual claims
+    # 4. Extract claims
     # --------------------------------------------------
 
     claims = extract_claims(answer)
 
-    print("\n" + "=" * 60)
-    print("FACTUAL CLAIMS")
-    print("=" * 60)
-
-    for i, claim in enumerate(claims, start=1):
-        print(f"{i}. {claim}")
+    claim_results = []
 
     # --------------------------------------------------
-    # 5. Verify each claim
+    # 5. Verify every claim against every source
     # --------------------------------------------------
 
-    print("\n" + "=" * 60)
-    print("CLAIM VERIFICATION")
-    print("=" * 60)
+    for claim in claims:
 
-    for i, claim in enumerate(claims, start=1):
+        verifications = []
 
-        print(f"\nCLAIM {i}")
-        print(f"Statement: {claim}")
+        for source in sources:
 
-        # Find the most relevant source
-        matched = match_evidence(claim, sources)
+            source_evidence = source.get("text", "")
 
-        source = matched["source"]
+            if not source_evidence:
+                source_evidence = source.get("snippet", "")
 
-        if not source:
-            print("Verdict: INSUFFICIENT_EVIDENCE")
-            print("Reason: No relevant evidence was found.")
-            continue
+            if not source_evidence:
+                continue
 
-        print(f"Best evidence: {source['title']}")
-        print(f"Match score: {matched['score']}")
-
-        # Use the matched source as evidence
-        matched_evidence = source.get("text", "")
-
-        if not matched_evidence:
-            matched_evidence = source.get("snippet", "")
-
-        # Ask the LLM to verify the claim
-        verification = verify_claim(
-            claim,
-            matched_evidence
-        )
-
-        print(f"Verdict: {verification['verdict']}")
-        print(f"Reason: {verification['reason']}")
-
-        if verification.get("evidence_quote"):
-            print(
-        f"Evidence: "
-        f"{verification['evidence_passage']}"
+            verification = verify_claim(
+                claim,
+                source_evidence
             )
 
+            verification["source_title"] = source["title"]
+            verification["source_url"] = source["url"]
+
+            verifications.append(verification)
+
+        # Analyze agreement/disagreement
+        analysis = analyze_verdicts(verifications)
+
+        claim_results.append({
+            "claim": claim,
+            "verification": verifications,
+            "analysis": analysis
+        })
+
     # --------------------------------------------------
-    # 6. Display sources
+    # 6. Return structured result
     # --------------------------------------------------
 
-    print("\n" + "=" * 60)
-    print("SOURCES USED")
-    print("=" * 60)
-
-    for i, source in enumerate(sources, start=1):
-
-        print(f"{i}. {source['title']}")
-        print(f"   {source['url']}")
+    return {
+        "question": question,
+        "answer": answer,
+        "claims": claim_results,
+        "sources": [
+            {
+                "title": source["title"],
+                "url": source["url"]
+            }
+            for source in sources
+        ]
+    }
 
 
 if __name__ == "__main__":
 
     question = input("Ask VERITY a question: ")
 
-    run_verity(question)
+    result = run_verity(question)
+
+    print("\nVERITY ANSWER")
+    print("=" * 60)
+    print(result["answer"])
+
+    print("\nCLAIMS")
+    print("=" * 60)
+
+    for claim in result["claims"]:
+
+        print(f"\n{claim['claim']}")
+
+        print(
+            f"Overall verdict: "
+            f"{claim['analysis']['overall_verdict']}"
+        )
